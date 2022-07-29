@@ -49,6 +49,14 @@ contract NFTMarket is ReentrancyGuard {
         return listingPrice;
     }
 
+    /// @notice function to set listingprice
+    function setListingPrice(uint _price) public returns (uint) {
+        if (msg.sender == address(this)) {
+            listingPrice = _price;
+        }
+        return listingPrice;
+    }
+
     /// @notice function to create market item
     function createMarketItem(
         address nftContract,
@@ -87,5 +95,110 @@ contract NFTMarket is ReentrancyGuard {
             price,
             false
         );
+    }
+
+    /// @notice function to create a sale
+    function createMarketSale(address nftContract, uint256 itemId)
+        public
+        payable
+        nonReentrant
+    {
+        uint price = idMarketItem[itemId].price;
+        uint tokenId = idMarketItem[itemId].tokenId;
+
+        require(
+            msg.value == price,
+            "Please submit the asking price in order to complete purchase"
+        );
+
+        //pay the seller the amount
+        idMarketItem[itemId].seller.transfer(msg.value);
+
+        //transfer ownership of the nft from the contract itself to the buyer
+        IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
+
+        idMarketItem[itemId].owner = payable(msg.sender); //mark buyer as new owner
+        idMarketItem[itemId].sold = true; //mark that it has been sold
+        _itemsSold.increment(); //increment the total number of Items sold by 1
+        payable(owner).transfer(listingPrice); //pay owner of contract the listing price
+    }
+
+    /// @notice total number of items unsold on our platform
+    function fetchMarketItems() public view returns (MarketItem[] memory) {
+        uint itemCount = _itemIds.current(); //total number of items ever created
+        //total number of items that are unsold = total items ever created - total items ever sold
+        uint unsoldItemCount = _itemIds.current() - _itemsSold.current();
+        uint currentIndex = 0;
+
+        MarketItem[] memory items = new MarketItem[](unsoldItemCount);
+
+        //loop through all items ever created
+        for (uint i = 0; i < itemCount; i++) {
+            //get only unsold item
+            //check if the item has not been sold
+            //by checking if the owner field is empty
+            if (idMarketItem[i + 1].owner == address(0)) {
+                //yes, this item has never been sold
+                uint currentId = idMarketItem[i + 1].itemId;
+                MarketItem storage currentItem = idMarketItem[currentId];
+                items[currentIndex] = currentItem;
+                currentIndex += 1;
+            }
+        }
+        return items; //return array of all unsold items
+    }
+
+    /// @notice fetch list of NFTS owned/bought by this user
+    function fetchMyNFTs() public view returns (MarketItem[] memory) {
+        //get total number of items ever created
+        uint totalItemCount = _itemIds.current();
+
+        uint itemCount = 0;
+        uint currentIndex = 0;
+
+        for (uint i = 0; i < totalItemCount; i++) {
+            //get only the items that this user has bought/is the owner
+            if (idMarketItem[i + 1].owner == msg.sender) {
+                itemCount += 1; //total length
+            }
+        }
+
+        MarketItem[] memory items = new MarketItem[](itemCount);
+        for (uint i = 0; i < totalItemCount; i++) {
+            if (idMarketItem[i + 1].owner == msg.sender) {
+                uint currentId = idMarketItem[i + 1].itemId;
+                MarketItem storage currentItem = idMarketItem[currentId];
+                items[currentIndex] = currentItem;
+                currentIndex += 1;
+            }
+        }
+        return items;
+    }
+
+    /// @notice fetch list of NFTS owned/bought by this user
+    function fetchItemsCreated() public view returns (MarketItem[] memory) {
+        //get total number of items ever created
+        uint totalItemCount = _itemIds.current();
+
+        uint itemCount = 0;
+        uint currentIndex = 0;
+
+        for (uint i = 0; i < totalItemCount; i++) {
+            //get only the items that this user has bought/is the owner
+            if (idMarketItem[i + 1].seller == msg.sender) {
+                itemCount += 1; //total length
+            }
+        }
+
+        MarketItem[] memory items = new MarketItem[](itemCount);
+        for (uint i = 0; i < totalItemCount; i++) {
+            if (idMarketItem[i + 1].seller == msg.sender) {
+                uint currentId = idMarketItem[i + 1].itemId;
+                MarketItem storage currentItem = idMarketItem[currentId];
+                items[currentIndex] = currentItem;
+                currentIndex += 1;
+            }
+        }
+        return items;
     }
 }
